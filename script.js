@@ -78,6 +78,7 @@
   const form = document.getElementById('contact-form');
   if (form) {
     const status = document.getElementById('form-status');
+    const submitButton = form.querySelector('[type="submit"]');
     const fields = [
       { input: document.getElementById('name'), error: document.getElementById('name-error'), message: 'Bitte geben Sie Ihren Namen ein.' },
       { input: document.getElementById('email'), error: document.getElementById('email-error'), message: 'Bitte geben Sie eine gültige E-Mail-Adresse ein.', validate: input => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.value.trim()) },
@@ -85,7 +86,7 @@
       { input: document.getElementById('privacy'), error: document.getElementById('privacy-error'), message: 'Bitte bestätigen Sie die Datenschutzhinweise.' }
     ];
     fields.forEach(item => item.input && item.input.addEventListener('input', () => { item.error.textContent = ''; item.input.removeAttribute('aria-invalid'); }));
-    form.addEventListener('submit', event => {
+    form.addEventListener('submit', async event => {
       event.preventDefault();
       let firstInvalid = null;
       fields.forEach(item => {
@@ -94,14 +95,33 @@
         if (!valid) { item.input.setAttribute('aria-invalid', 'true'); if (!firstInvalid) firstInvalid = item.input; }
       });
       if (firstInvalid) { firstInvalid.focus(); if (status) status.textContent = 'Bitte prüfen Sie die markierten Felder.'; return; }
-      const name = document.getElementById('name').value.trim();
-      const email = document.getElementById('email').value.trim();
-      const topic = document.getElementById('topic').value;
-      const message = document.getElementById('message').value.trim();
-      const subject = encodeURIComponent(`Anfrage von ${name}${topic ? ` – ${topic}` : ''}`);
-      const body = encodeURIComponent(`Name: ${name}\nE-Mail: ${email}\nThema: ${topic || 'Nicht angegeben'}\n\n${message}`);
-      if (status) status.textContent = 'Ihr E-Mail-Programm wird mit Ihrer Anfrage geöffnet.';
-      window.location.href = `mailto:hallo@alpenwerk-energie.de?subject=${subject}&body=${body}`;
+      const originalText = submitButton.textContent;
+      submitButton.disabled = true;
+      submitButton.setAttribute('aria-busy', 'true');
+      if (status) status.textContent = 'Ihre Anfrage wird übermittelt …';
+      try {
+        const response = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({
+            name: document.getElementById('name').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            message: document.getElementById('message').value.trim(),
+            privacyAccepted: document.getElementById('privacy').checked
+          })
+        });
+        const result = await response.json();
+        if (!response.ok || result.success !== true) throw new Error(result.error || 'Übermittlung fehlgeschlagen.');
+        if (status) status.textContent = result.message;
+        form.reset();
+      } catch (_) {
+        if (status) status.textContent = 'Ihre Nachricht konnte nicht übermittelt werden. Bitte versuchen Sie es später erneut.';
+      } finally {
+        submitButton.disabled = false;
+        submitButton.removeAttribute('aria-busy');
+        // Keep the existing button label and arrow intact.
+        if (submitButton.firstChild) submitButton.firstChild.textContent = 'Anfrage senden ';
+      }
     });
   }
 })();
